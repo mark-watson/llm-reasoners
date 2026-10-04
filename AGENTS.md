@@ -158,3 +158,52 @@ Always run with `HF_HOME=$PWD/.hf-cache` (see below).
 - Set `HF_HOME` to a workspace path (e.g. `$PWD/.hf-cache`), otherwise dataset
   downloads fail: the default `~/.cache/huggingface` is outside the writable
   workspace.
+- Set `XDG_CACHE_HOME` to a workspace path (e.g. `$PWD/.cl-cache`) when running
+  SBCL here, or ASDF cannot write its fasl cache under `~/.cache/common-lisp`.
+
+## Common Lisp port (`common-lisp/`)
+
+`common-lisp/llm-reasoning-lib.lisp` is a small port of the core llm-reasoners
+abstractions (language model / world model / search config / beam search /
+reasoner, plus chain-of-thought with self-consistency) on top of the locally
+installed **litelm** Quicklisp library. `common-lisp/CoT-gsm8k-example.lisp`
+answers GSM8K with it through oMLX.
+
+```bash
+sbcl --script common-lisp/CoT-gsm8k-example.lisp        # 6/6 with Laguna
+sbcl --script common-lisp/CoT-gsm8k-example.lisp 6 5    # 5-sample self-consistency
+sbcl --non-interactive --load common-lisp/llm-reasoning-lib.lisp \
+     --eval '(llm-reasoning:run-self-tests)'            # 17 offline checks
+```
+
+- litelm routes on a `"provider/model-name"` string; `omlx/Laguna-XS-2.1-6bit`
+  is its default and needs no API key. Do **not** use gemma-4 through litelm —
+  that MLX repo has no chat template, so oMLX returns empty content (the Python
+  `OMLXModel` works around it; litelm does not).
+- **Known environment bug — dexador + `*PRINT-CASE*`.** litelm POSTs through
+  dexador. dexador's `DEFINE-ALIST-CACHE` builds function names with
+  `(FORMAT NIL "LOOKUP-IN-~A" ...)`, which follows `*PRINT-CASE*`. With the
+  `(setf *print-case* :downcase)` in `~/.sbclrc`, dexador compiles definitions
+  named `|LOOKUP-IN-content-encoding-cache|` while the source references read as
+  `LOOKUP-IN-CONTENT-ENCODING-CACHE`, so **every POST that carries a body fails**
+  with "The function ... is undefined" — while GET keeps working, which makes it
+  look like anything but a name-case bug. One-time fix:
+
+  ```lisp
+  (let ((*print-case* :upcase)) (asdf:load-system :dexador :force t))
+  ```
+
+  The library binds `*PRINT-CASE*` to `:UPCASE` around its own litelm load so a
+  fresh compile is correct; an already-cached bad fasl still needs the force
+  above.
+- `llm-reasoning` shadows the `COMMON-LISP` symbols `STEP` and `SEARCH`, so a
+  package that `:USE`s both CL and `llm-reasoning` must shadowing-import them.
+  `CoT-gsm8k-example.lisp` imports only the symbols it needs instead.
+- `sbcl --script` skips `~/.sbclrc`, so Quicklisp and the `litelm.asd` project
+  directory are both missing; the library's bootstrap handles that itself
+  (honouring `LITELM_ASD` if litelm lives somewhere unusual).
+- Measured: CoT on the first 6 GSM8K test questions scores 6/6 with
+  `Laguna-XS-2.1-6bit`, matching the Python example. Two settings matter — the
+  `additional_prompt="ANSWER"` instruction, and a 2048-token budget (at 1024 the
+  150%-profit question is truncated mid-deliberation and scores as wrong).
+

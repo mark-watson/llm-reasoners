@@ -25,6 +25,7 @@ build/
 .venv/
 .uv-cache/
 .hf-cache/
+.cl-cache/
 examples/MATH
 *.ipynb
 examples/AQuA_rap/test.ipynb
