@@ -18,7 +18,7 @@ class OpenAIModel(LanguageModel):
         max_tokens: int = 2048,
         temperature=0.0,
         additional_prompt=None,
-        backend: Literal["openai", "sglang"] = "openai",
+        backend: Literal["openai", "sglang", "omlx"] = "openai",
         is_instruct_model: bool = False,
     ):
         self.model = model
@@ -37,6 +37,13 @@ class OpenAIModel(LanguageModel):
         elif self.backend == "sglang":
             self.client = OpenAI(
                 base_url=os.getenv("SGLANG_API_URL", None),
+            )
+        elif self.backend == "omlx":
+            # Local MLX inference server (Apple silicon), OpenAI-compatible.
+            # See reasoners/lm/omlx_model.py and AGENTS.md.
+            self.client = OpenAI(
+                base_url=os.getenv("OMLX_BASE_URL", "http://127.0.0.1:8000/v1"),
+                api_key=os.getenv("OMLX_API_KEY", "omlx-local"),
             )
         else:
             raise ValueError(f"Invalid backend: {self.backend}")
