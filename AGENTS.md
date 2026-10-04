@@ -34,10 +34,13 @@ conversation.
 | Lifecycle | `omlx start` / `omlx stop` / `omlx restart` |
 | Health check | `curl -s http://127.0.0.1:8000/health` |
 | List models | `curl -s http://127.0.0.1:8000/v1/models` |
+| Unload a model | `POST /v1/models/{model_id}/unload` |
+| Full API schema | `curl -s http://127.0.0.1:8000/openapi.json` |
 
-Auth: oMLX expects a bearer token. The key lives in `~/.omlx/settings.json`
-under `auth.api_key` — export it as `OMLX_API_KEY` and **never commit it**
-(`.env` is already gitignored). `OMLX_BASE_URL` overrides the endpoint.
+Auth: oMLX expects a bearer token (any token, while
+`auth.skip_api_key_verification` is true). The real key lives in
+`~/.omlx/settings.json` under `auth.api_key` — **never commit it** (`.env` is
+gitignored). `OMLX_API_KEY` and `OMLX_BASE_URL` override both.
 
 ```bash
 export OMLX_API_KEY=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.omlx/settings.json')))['auth']['api_key'])")
@@ -45,47 +48,83 @@ export OMLX_API_KEY=$(python3 -c "import json,os;print(json.load(open(os.path.ex
 
 ### Models
 
-| role | model id |
-|---|---|
-| **default** | `mlx-community--gemma-4-26b-a4b-6bit` |
-| alternate | `Laguna-XS-2.1-6bit` |
-| alternate | `mlx-community--Qwen3.8-27B-OptiQ-4bit` |
-| also served | `mlx-community--Qwen3.6-35B-A3B-4bit`, `lmstudio-community--Qwen3-Coder-Next-MLX-4bit`, `mlx-community--Laguna-XS-2.1-4bit` |
+| role | model id | usable? |
+|---|---|---|
+| **default** | `mlx-community--gemma-4-26b-a4b-6bit` | yes, **only via manual chat template** |
+| alternate | `Laguna-XS-2.1-6bit` | yes, natively |
+| alternate | `mlx-community--Qwen3.8-27B-OptiQ-4bit` | yes, natively |
+| also served | `mlx-community--Qwen3.6-35B-A3B-4bit`, `lmstudio-community--Qwen3-Coder-Next-MLX-4bit`, `mlx-community--Laguna-XS-2.1-4bit` | untested |
 
 Use the project default unless the user names another model for the task at
 hand. Always take ids from `GET /v1/models` rather than guessing, since oMLX
 names local models with `--` in place of `/`.
+
+### Model gotchas (all verified against the live server)
+
+- **gemma-4 ships no chat template.** Its `tokenizer_config.json` has no
+  `chat_template`, so oMLX's `/v1/chat/completions` returns **empty content**
+  (and raw completions just parrot the prompt). `OMLXModel` therefore applies a
+  Gemma turn template itself and drives `/v1/completions`. If gemma-4 output
+  ever looks empty or like prompt echo, check this first.
+- **`n` (num_return_sequences) is ignored** — oMLX returns exactly one choice.
+- **One prompt per request** is accepted; no batch inference endpoint.
+- `OMLXModel` emulates both of the above with sequential requests so the
+  caller-visible behaviour matches the other backends.
+- **No log-probabilities.** `logprobs`/`top_logprobs` are accepted and silently
+  dropped; there is no logits endpoint. So `get_next_token_logits()` and
+  `get_loglikelihood()` still raise `NotImplementedError`. Any algorithm needing
+  candidate scores must use a sampling-based reward instead.
+- **Memory guard.** oMLX keeps models resident (LRU) and its guard rejects a
+  26–27B model while another large model is warm (`prefill_memory_exceeded` /
+  `prefill_memory_aborted`). Call `unload_all()` (or `POST
+  /v1/models/{id}/unload`) before loading a second large model — restarting
+  oMLX also clears the pool. Do not silently swap models to dodge this; surface
+  it to the user.
 
 ### Using it from code
 
 ```python
 from reasoners.lm import OMLXModel
 
-llm = OMLXModel()                    # project default (gemma-4)
+llm = OMLXModel()                    # project default (gemma-4 + gemma template)
 llm = OMLXModel("laguna")            # friendly alias
 llm = OMLXModel("mlx-community--Qwen3.8-27B-OptiQ-4bit")
+llm = OMLXModel(chat_template="none")  # force the server's chat endpoint
+
 out = llm.generate(["..."])          # -> GenerateOutput(text=[...])
 ```
 
 - Implementation: `reasoners/lm/omlx_model.py`; `backend="omlx"` is handled in
   `reasoners/lm/openai_model.py.__init_client__`.
-- Friendly aliases live in `MODEL_ALIASES` (`reasoners/lm/omlx_model.py`).
-  Add new models there instead of hardcoding ids in example scripts.
-- Smoke-test the server and every registered model:
-  `python -m reasoners.lm.omlx_model`
-- When adding a new example/algorithm, expose `omlx` as a `base_lm` choice
-  instead of `openai`/`anthropic`/`google`.
+- Friendly aliases live in `MODEL_ALIASES`; add new models there rather than
+  hardcoding ids in example scripts. Manual chat templates live in
+  `CHAT_TEMPLATES` (`chat_template="auto"` selects one by model id).
+- Helpers: `list_models()`, `unload(id)`, `unload_all()`.
+- Smoke-test the server and every registered model (unloads between models to
+  avoid the memory guard): `python -m reasoners.lm.omlx_model`
 
-### Caveats
+### Running the examples
 
-- **Memory guard.** oMLX keeps models resident (LRU pool). Loading a 26–27B
-  model while another large model is warm can be rejected or aborted
-  mid-prefill with `prefill_memory_exceeded` / `prefill_memory_aborted`.
-  Check `curl -s http://127.0.0.1:8000/health` (`loaded_count`,
-  `current_model_memory`) before blaming the code; `omlx restart` clears the
-  pool. Do not silently switch models to dodge this — surface it to the user.
-- **No logprobs.** `get_next_token_logits()` and `get_loglikelihood()` raise
-  `NotImplementedError` on this backend, so algorithms that score candidates
-  (self-eval / reward-model style) are not available through oMLX as-is.
-- Requesting a model that is not in `GET /v1/models` fails at request time, not
-  import time.
+The environment is a `uv` venv in `.venv` (Python 3.11). `bitsandbytes`,
+`fairscale`-adjacent CUDA extras and `tarski` are **not** installed and are not
+needed for these three.
+
+```bash
+# chain-of-thought (no logprobs needed)
+.venv/bin/python examples/CoT/gsm8k/inference.py --base_lm omlx --model_dir laguna --num_examples 2
+
+# tree-of-thoughts / game24 (its default reward is sampling-based)
+.venv/bin/python examples/ToT/game24/inference.py --base_lm omlx --omlx_model laguna --num_examples 2
+
+# RAP (needs the sampling usefulness reward, selected automatically)
+.venv/bin/python examples/RAP/gsm8k/inference.py --base_lm omlx --omlx_model laguna --num_examples 1
+```
+
+- `--num_examples N` (added to `Evaluator.evaluate`) limits a run; the full
+  GSM8K test set is 1319 items and is impractical on a local model.
+- **RAP + oMLX**: RAP's usefulness reward normally needs next-token log-odds.
+  oMLX has none, so `calc_useful='sampling'` (n=`n_useful_samples`) is selected
+  automatically with a printed warning. Those rewards are an **approximation**,
+  not the original reward — say so when reporting results.
+- **ToT + oMLX**: keep `calc_reward='sampling'`; `'logits'` raises a clear error.
+- Batch size: `batch_size=1` is the safe choice for multi-prompt code paths.

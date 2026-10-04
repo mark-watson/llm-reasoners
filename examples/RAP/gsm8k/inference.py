@@ -39,6 +39,9 @@ def rap_gsm8k(base_model: LanguageModel,
               disable_tqdm: bool = False,
               output_trace_in_each_iter: bool = True,
               aggregate: bool = True,
+              calc_useful: str = 'logits',
+              n_useful_samples: int = 3,
+              num_examples: int = None,
               **search_algo_params):
 
     if aggregate:
@@ -55,7 +58,8 @@ def rap_gsm8k(base_model: LanguageModel,
     config = GSM8kConfig(base_model=base_model, useful_prompt=useful_prompt,
                          n_actions=n_action, batch_size=batch_size, temperature=temperature,
                          reward_alpha=reward_alpha, reward_confidence_default=reward_confidence_default,
-                         force_terminating_on_depth_limit=force_terminating_on_depth_limit, depth_limit=depth_limit)
+                         force_terminating_on_depth_limit=force_terminating_on_depth_limit, depth_limit=depth_limit,
+                         calc_useful=calc_useful, n_useful_samples=n_useful_samples)
     search_algo = search_algo(**search_algo_params)
     reasoner = Reasoner(world_model=world_model, search_config=config, search_algo=search_algo)
 
@@ -66,7 +70,8 @@ def rap_gsm8k(base_model: LanguageModel,
                                disable_log=disable_log,
                                disable_tqdm=disable_tqdm)
 
-    accuracy = evaluator.evaluate(reasoner, num_shot=4, resume=resume, log_dir=log_dir)
+    accuracy = evaluator.evaluate(reasoner, num_shot=4, resume=resume, log_dir=log_dir,
+                                  num_examples=num_examples)
     print(accuracy)
 
 
@@ -87,7 +92,11 @@ if __name__ == '__main__':
         sys.stdout = open(os.devnull, 'w')
         warnings.filterwarnings('ignore')
 
-    def main(base_lm: Literal['llama', 'llama.cpp', 'llama-2', 'hf', 'exllama', 'llama-3'] = 'llama-3',
+    def main(base_lm: Literal['llama', 'llama.cpp', 'llama-2', 'hf', 'exllama', 'llama-3', 'omlx'] = 'llama-3',
+             omlx_model: str = None,
+             calc_useful: str = 'logits',
+             n_useful_samples: int = 3,
+             num_examples: int = None,
              llama_ckpts: str = llama_ckpts,
              llama_2_ckpts: str = llama_2_ckpts,
              llama_3_ckpts: str = llama_3_ckpts,
@@ -141,12 +150,24 @@ if __name__ == '__main__':
             from reasoners.lm import ExLlamaModel
             base_model = ExLlamaModel(exllama_model_dir, exllama_lora_dir, mem_map=exllama_mem_map,
                                       max_batch_size=batch_size, max_new_tokens=200, max_seq_length=3072)
+        elif base_lm == 'omlx':
+            # Local oMLX server; see AGENTS.md. omlx_model=None -> project default.
+            from reasoners.lm import OMLXModel
+            base_model = OMLXModel(omlx_model)
+            if calc_useful == 'logits':
+                print("[omlx] oMLX does not expose token log-probabilities, so the original "
+                      "Yes/No log-odds usefulness reward is unavailable. Falling back to "
+                      "calc_useful='sampling' -- RAP rewards are an approximation.")
+                calc_useful = 'sampling'
         else:
             assert False, f'cannot resolve {base_lm=}'
         rap_gsm8k(base_model=base_model,
                   useful_prompt=useful_prompt,
                   prompt=prompt,
                   batch_size=batch_size,
+                  calc_useful=calc_useful,
+                  n_useful_samples=n_useful_samples,
+                  num_examples=num_examples,
                   disable_log=disable_log or local_rank != 0,
                   disable_tqdm=disable_tqdm or local_rank != 0,
                   **kwargs)

@@ -55,10 +55,15 @@ class CoTReasoner():
         outputs= [o.strip() if o.strip().endswith(".") else o.strip() + "." for o in outputs]
         print(outputs)
         return outputs
-def main(base_lm:Literal['hf', 'google', 'openai', 'anthropic','exllama',"llama2"],model_dir, lora_dir=None, mem_map=None, batch_size=1, prompt="examples/CoT/gsm8k/prompts/cot.json", resume=0, log_dir=None, temperature=0, n_sc=1, quantized='int8',llama_size=None):
+def main(base_lm:Literal['hf', 'google', 'openai', 'anthropic','exllama',"llama2","omlx"],model_dir, lora_dir=None, mem_map=None, batch_size=1, prompt="examples/CoT/gsm8k/prompts/cot.json", resume=0, log_dir=None, temperature=0, n_sc=1, quantized='int8',llama_size=None,num_examples=None):
 
     if base_lm == "openai":
         base_model = OpenAIModel("gpt-4-1106-preview", additional_prompt="ANSWER")
+    elif base_lm == "omlx":
+        # Local oMLX server; model_dir carries the oMLX model id or an alias
+        # (e.g. --model_dir laguna). See AGENTS.md.
+        from reasoners.lm import OMLXModel
+        base_model = OMLXModel(model_dir, additional_prompt="ANSWER")
     elif base_lm == "google":
         base_model = BardCompletionModel("gemini-pro", additional_prompt="ANSWER")
     elif base_lm == "anthropic":
@@ -86,12 +91,13 @@ def main(base_lm:Literal['hf', 'google', 'openai', 'anthropic','exllama',"llama2
     log_dir =  f'logs/gsm8k_'\
                         f'cot/'\
                         f'{datetime.now().strftime("%m%d%Y-%H%M%S")}'
-    if base_lm == 'hf':
+    if base_lm in ('hf', 'omlx'):
         model_name= model_dir.split('/')[-1]
     else:
         model_name = base_lm
     log_dir = log_dir + f'_{model_name}'
-    accuracy = evaluator.evaluate(reasoner, shuffle_prompt=True, num_shot=4, resume=resume, log_dir=log_dir)
+    accuracy = evaluator.evaluate(reasoner, shuffle_prompt=True, num_shot=4, resume=resume, log_dir=log_dir,
+                                  num_examples=num_examples)
     print(f'accuracy: {accuracy:.4f}')
     return 0
 

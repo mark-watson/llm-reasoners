@@ -37,6 +37,7 @@ def rap_game24(base_model: LanguageModel,
                log_dir: Optional[str] = None,
                disable_log: bool = False,
                calc_reward: Literal['sampling', 'logits'] = 'sampling',
+               num_examples: int = 100,
                **search_algo_params):
     if not disable_log:
         if log_dir is None:
@@ -57,7 +58,7 @@ def rap_game24(base_model: LanguageModel,
     reasoner = Reasoner(world_model=world_model, search_config=config, search_algo=search_algo)
 
     # test from 900-999
-    dataset = utils.read_data(file='./examples/ToT/game24/data/24.csv')[900:1000]
+    dataset = utils.read_data(file='./examples/ToT/game24/data/24.csv')[900:900 + num_examples]
     correct_count = 0
     for i, example in enumerate(tqdm(dataset, total=len(dataset), initial=0, desc='game24')):
         # print(f'\n======== example {i}: {example} ========')
@@ -100,7 +101,10 @@ if __name__ == '__main__':
         sys.stdout = open(os.devnull, 'w')
         warnings.filterwarnings('ignore')
 
-    def main(base_lm: Literal['llama', 'llama.cpp', 'llama-2', 'hf', 'exllama','llama-3'] = 'llama-2',
+    def main(base_lm: Literal['llama', 'llama.cpp', 'llama-2', 'hf', 'exllama','llama-3','omlx'] = 'llama-2',
+             omlx_model: str = None,
+             calc_reward: Literal['sampling', 'logits'] = 'sampling',
+             num_examples: int = 100,
              llama_ckpts: str = llama_ckpts,
              llama_2_ckpts: str = llama_2_ckpts,
              llama_3_ckpts: str = llama_3_ckpts,
@@ -150,12 +154,22 @@ if __name__ == '__main__':
             from reasoners.lm import ExLlamaModel
             base_model = ExLlamaModel(exllama_model_dir, exllama_lora_dir, mem_map=exllama_mem_map,
                                       max_batch_size=batch_size, max_new_tokens=512, max_seq_length=2048)
+        elif base_lm == 'omlx':
+            # Local oMLX server; omlx_model=None -> project default. See AGENTS.md.
+            from reasoners.lm import OMLXModel
+            base_model = OMLXModel(omlx_model)
+            if calc_reward == 'logits':
+                raise ValueError(
+                    "[omlx] calc_reward='logits' needs get_next_token_logits(), which oMLX "
+                    "cannot provide (it returns no logprobs). Use calc_reward='sampling'.")
         else:
             assert False, f'cannot resolve {base_lm=}'
         rap_game24(base_model=base_model,
                    prompts=prompts,
                    batch_size=batch_size,
                    n_beam=5,
+                   calc_reward=calc_reward,
+                   num_examples=num_examples,
                    disable_log=disable_log or local_rank != 0,
                    search_algo=MCTS,
                    **kwargs)

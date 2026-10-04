@@ -22,6 +22,8 @@ dataset/
 *.jsonl
 sas_plan
 build/
+.venv/
+.uv-cache/
 examples/MATH
 *.ipynb
 examples/AQuA_rap/test.ipynb

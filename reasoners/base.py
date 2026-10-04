@@ -207,9 +207,14 @@ class Evaluator():
                  shuffle_prompt=True,
                  num_shot=4,
                  resume=0,
-                 log_dir=None):
+                 log_dir=None,
+                 num_examples: Optional[int] = None):
 
         self.dataset = list(self.full_dataset)[resume:]
+        if num_examples is not None:
+            # Run only the first num_examples items (useful for smoke tests,
+            # e.g. when evaluating a slow local model).
+            self.dataset = self.dataset[:num_examples]
         try:
             algo_name = reasoner.search_algo.__class__.__name__
         except:

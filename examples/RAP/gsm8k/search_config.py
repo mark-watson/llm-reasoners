@@ -1,6 +1,6 @@
 import io
 import re
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Literal
 import numpy as np
 
 from world_model import GSM8kState, GSM8kAction, GSM8kPromptDict
@@ -27,7 +27,9 @@ class GSM8kConfig(SearchConfig):
                  depth_limit=5,
                  force_terminating_on_depth_limit=True,
                  force_overall_prompt_on_overall_question=True,
-                 force_overall_question_on_overall_prompt=True) -> None:
+                 force_overall_question_on_overall_prompt=True,
+                 calc_useful: Literal['logits', 'sampling'] = 'logits',
+                 n_useful_samples: int = 3) -> None:
         super().__init__()
         self.base_model = base_model
         self.useful_prompt = useful_prompt
@@ -43,6 +45,8 @@ class GSM8kConfig(SearchConfig):
         self.reward_confidence_default = reward_confidence_default
         self.force_overall_prompt_on_overall_question = force_overall_prompt_on_overall_question
         self.force_overall_question_on_overall_prompt = force_overall_question_on_overall_prompt
+        self.calc_useful = calc_useful
+        self.n_useful_samples = n_useful_samples
         self.overall_question: Optional[str] = None
         self.prompt_examples = ""
         self.n_shots = 0
@@ -121,11 +125,39 @@ class GSM8kConfig(SearchConfig):
             f.write(self.useful_prompt["useful_prefix"])
             model_input = f.getvalue()
 
-        logits = self.base_model.get_next_token_logits(model_input, ["Yes", "No"])[0]
-        probs = np.exp(logits) / np.sum(np.exp(logits))
-        useful_prob = probs[0]
+        if self.calc_useful == 'logits':
+            logits = self.base_model.get_next_token_logits(model_input, ["Yes", "No"])[0]
+            probs = np.exp(logits) / np.sum(np.exp(logits))
+            useful_prob = probs[0]
+        elif self.calc_useful == 'sampling':
+            useful_prob = self._useful_prob_by_sampling(model_input)
+        else:
+            raise NotImplementedError(f"unknown calc_useful={self.calc_useful!r}")
         fast_reward, _ = self.calculate_reward(useful_prob)
         return fast_reward, {'r_useful': useful_prob}
+
+    def _useful_prob_by_sampling(self, model_input: str) -> float:
+        """Estimate P(useful) by sampling, for backends without token logprobs.
+
+        The original RAP reward takes the log-odds of the next token being
+        "Yes" vs "No".  oMLX (and any OpenAI-compatible server that does not
+        return logprobs) cannot provide that, so this samples the same prompt
+        n_useful_samples times and returns a Laplace-smoothed Yes/No
+        frequency.
+
+        This is an *approximation* of the original reward, not the model's true
+        next-token distribution: it is affected by the sampling temperature and
+        by answers that are neither Yes nor No (which are ignored).
+        """
+        outputs = self.base_model.generate(
+            [model_input] * self.n_useful_samples,
+            do_sample=True,
+            temperature=self.temperature,
+            stop="\n",
+            max_tokens=4).text
+        yes = sum(1 for o in outputs if o.strip().lower().startswith("yes"))
+        no = sum(1 for o in outputs if o.strip().lower().startswith("no"))
+        return (yes + 1) / (yes + no + 2)
 
     def calculate_reward(self, r_useful, r_conf=None):
         if r_conf is None:
