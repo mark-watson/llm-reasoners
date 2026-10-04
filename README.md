@@ -74,6 +74,77 @@
     
     </details>
 
+## **Mark Watson experiments notes**
+
+On this branch (`mw-experiments`) every example is run against **local models served by
+oMLX** (MLX on Apple silicon) instead of a cloud API. See `AGENTS.md` for the full details.
+
+### 1. Start oMLX and export the key
+
+```bash
+omlx start          # `omlx restart` also clears the resident model pool
+curl -s http://127.0.0.1:8000/health          # is it up?
+curl -s http://127.0.0.1:8000/v1/models       # what is being served?
+
+export OMLX_BASE_URL=http://127.0.0.1:8000/v1
+export OMLX_API_KEY=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.omlx/settings.json')))['auth']['api_key'])")
+```
+
+### 2. Set up the environment (once)
+
+```bash
+UV_CACHE_DIR=$PWD/.uv-cache uv venv --python 3.11 .venv
+UV_CACHE_DIR=$PWD/.uv-cache uv pip install --python .venv/bin/python \
+  tqdm fire numpy scipy pandas sympy torch transformers datasets \
+  huggingface_hub sentencepiece openai peft accelerate fairscale \
+  anthropic google-generativeai pyyaml requests tarski pddl==0.2.0
+UV_CACHE_DIR=$PWD/.uv-cache uv pip install --python .venv/bin/python -e . --no-deps
+
+# Datasets must be cached inside the repo; the default ~/.cache/huggingface is not writable here.
+export HF_HOME=$PWD/.hf-cache
+```
+
+### 3. Run the examples
+
+```bash
+# Chain-of-Thought, GSM8K
+.venv/bin/python examples/CoT/gsm8k/inference.py --base_lm omlx --model_dir laguna --num_examples 8
+
+# RAP, GSM8K
+.venv/bin/python examples/RAP/gsm8k/inference.py --base_lm omlx --omlx_model laguna --num_examples 1
+
+# Tree-of-Thoughts, Game of 24
+.venv/bin/python examples/ToT/game24/inference.py --base_lm omlx --omlx_model laguna --num_examples 2
+```
+
+`--num_examples` limits a run — the full GSM8K test set is 1319 questions, which is slow on a
+local model. Any model id or alias from `reasoners/lm/omlx_model.py` can be used in place of
+`laguna` (e.g. `gemma`, `qwen3.8`).
+
+### Models
+
+| alias | model | notes |
+|--|--|--|
+| `laguna` | `Laguna-XS-2.1-6bit` | **recommended** — fastest of the three and the only one smoke-tested on two examples (CoT, RAP) |
+| `gemma` | `mlx-community--gemma-4-26b-a4b-6bit` | ships no chat template; `OMLXModel` applies a Gemma template itself |
+| `qwen3.8` | `mlx-community--Qwen3.8-27B-OptiQ-4bit` | works, but ~18x slower end-to-end than Laguna on the same CoT run |
+
+### Caveats worth knowing before you trust a number
+
+- **oMLX exposes no token log-probabilities.** RAP's usefulness reward therefore falls back to a
+  sampling-based approximation (selected automatically, with a warning). Those scores are not
+  directly comparable to the paper's.
+- **ToT / Game of 24 does not currently work well with these models.** None of them follow the
+  strict `(left: ...)` output format: Laguna returns no actions at all, while Qwen3.8 echoes the
+  prompt's own examples, producing plausible-looking but wrong states. The pipeline runs, but
+  treat its scores as invalid until a format-following model is available.
+- **Memory guard.** oMLX keeps models resident, and loading a 26-27B model while another large one
+  is still warm is rejected (`prefill_memory_exceeded`). Unload first:
+
+```bash
+.venv/bin/python -c "from reasoners.lm.omlx_model import unload_all; unload_all()"
+```
+
 ## News
 - Feb. 21, 2025: We have integrated Deepseek R1 ([example](https://github.com/maitrix-org/llm-reasoners/tree/main/examples/LongCoT_Search/ProsQA)). Also check out our analysis of the search patterns of R1 ([thread](https://x.com/MaitrixOrg/status/1893017035753574799)). 
 
