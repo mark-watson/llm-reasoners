@@ -22,7 +22,9 @@ class GSM8KEvaluator(Evaluator):
         self.output_extractor = output_extractor
         self.answer_extractor = answer_extractor
         self.input_processor = lambda x: x["question"]
-        self.full_dataset = datasets.load_dataset('gsm8k', 'main', split='test')
+        # 'openai/gsm8k' is the canonical id; the bare 'gsm8k' alias is rejected
+        # by huggingface_hub >= 1.0.
+        self.full_dataset = datasets.load_dataset('openai/gsm8k', 'main', split='test')
         self._dataset_name = 'gsm8k'
         self.disable_log = disable_log
         self.disable_tqdm = disable_tqdm

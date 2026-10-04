@@ -105,9 +105,20 @@ out = llm.generate(["..."])          # -> GenerateOutput(text=[...])
 
 ### Running the examples
 
-The environment is a `uv` venv in `.venv` (Python 3.11). `bitsandbytes`,
-`fairscale`-adjacent CUDA extras and `tarski` are **not** installed and are not
-needed for these three.
+The environment is a `uv` venv in `.venv` (Python 3.11), with `torch`,
+`transformers`, `datasets`, `peft`, `accelerate`, `fairscale`, `openai`,
+`anthropic`, `google-generativeai`, `tarski` and `pddl==0.2.0` installed.
+`bitsandbytes`, `optimum` and `ninja` are **not** installed (CUDA-oriented and
+unused by these three). Recreate with::
+
+    UV_CACHE_DIR=$PWD/.uv-cache uv venv --python 3.11 .venv
+    UV_CACHE_DIR=$PWD/.uv-cache uv pip install --python .venv/bin/python \
+      tqdm fire numpy scipy pandas sympy torch transformers datasets \
+      huggingface_hub sentencepiece openai peft accelerate fairscale \
+      anthropic google-generativeai pyyaml requests tarski pddl==0.2.0
+    UV_CACHE_DIR=$PWD/.uv-cache uv pip install --python .venv/bin/python -e . --no-deps
+
+Always run with `HF_HOME=$PWD/.hf-cache` (see below).
 
 ```bash
 # chain-of-thought (no logprobs needed)
@@ -127,4 +138,18 @@ needed for these three.
   automatically with a printed warning. Those rewards are an **approximation**,
   not the original reward — say so when reporting results.
 - **ToT + oMLX**: keep `calc_reward='sampling'`; `'logits'` raises a clear error.
+- **ToT format caveat (measured 2026-10-04)**: none of the three models follow
+  game24's strict `...(left: ...)` continuation format. `Laguna-XS-2.1-6bit`
+  reasons with blank lines, so `get_actions` truncates at the first `\n\n` and
+  returns **zero** actions (run scores 0/1, no tree edges grow).
+  `Qwen3.8-27B-OptiQ-4bit` instead **parrots the in-prompt examples**, yielding
+  syntactically valid but semantically wrong actions (`8 10 14` for input
+  `4 5 6 10`) — verify actions against the actual input before trusting scores.
+  `chat_template_kwargs={'enable_thinking': False}` did not help; the model then
+  answers in prose. ToT needs a model that will continue a bare format.
 - Batch size: `batch_size=1` is the safe choice for multi-prompt code paths.
+- `reasoners/benchmark/gsm8k.py` uses the canonical `openai/gsm8k` dataset id;
+  the bare `gsm8k` alias is rejected by `huggingface_hub >= 1.0`.
+- Set `HF_HOME` to a workspace path (e.g. `$PWD/.hf-cache`), otherwise dataset
+  downloads fail: the default `~/.cache/huggingface` is outside the writable
+  workspace.
