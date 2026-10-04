@@ -112,7 +112,7 @@ out = llm.generate(["..."])          # -> GenerateOutput(text=[...])
 
 The environment is a `uv` venv in `.venv` (Python 3.11), with `torch`,
 `transformers`, `datasets`, `peft`, `accelerate`, `fairscale`, `openai`,
-`anthropic`, `google-generativeai`, `tarski` and `pddl==0.2.0` installed.
+`anthropic`, `google-genai`, `tarski` and `pddl==0.2.0` installed.
 `bitsandbytes`, `optimum` and `ninja` are **not** installed (CUDA-oriented and
 unused by these three). Recreate with::
 
@@ -120,7 +120,7 @@ unused by these three). Recreate with::
     UV_CACHE_DIR=$PWD/.uv-cache uv pip install --python .venv/bin/python \
       tqdm fire numpy scipy pandas sympy torch transformers datasets \
       huggingface_hub sentencepiece openai peft accelerate fairscale \
-      anthropic google-generativeai pyyaml requests tarski pddl==0.2.0
+      anthropic google-genai pyyaml requests tarski pddl==0.2.0
     UV_CACHE_DIR=$PWD/.uv-cache uv pip install --python .venv/bin/python -e . --no-deps
 
 Always run with `HF_HOME=$PWD/.hf-cache` (see below).

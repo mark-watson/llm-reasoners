@@ -26,7 +26,7 @@ setup(name='llm-reasoners',
                         'ninja',
                         'bitsandbytes',
                         'fairscale',
-                        'google-generativeai',
+                        'google-genai',
                         'anthropic'],
       include_package_data=True,
       python_requires='>=3.10')
