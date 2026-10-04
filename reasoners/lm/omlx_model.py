@@ -12,8 +12,8 @@ via the ``OMLX_API_KEY`` environment variable; never commit it::
 Usage::
 
     from reasoners.lm import OMLXModel
-    llm = OMLXModel()                       # project default model
-    llm = OMLXModel("laguna")               # alias for Laguna-XS-2.1-6bit
+    llm = OMLXModel()                       # project default (Laguna-XS-2.1-6bit)
+    llm = OMLXModel("gemma")                # gemma-4 (manual chat template applied)
     llm = OMLXModel("mlx-community--Qwen3.8-27B-OptiQ-4bit")
 
 Smoke-test the server and every registered model::
@@ -38,15 +38,18 @@ from .openai_model import (
 DEFAULT_BASE_URL = "http://127.0.0.1:8000/v1"
 
 # Project default model (per user preference, see AGENTS.md).
-DEFAULT_MODEL = "mlx-community--gemma-4-26b-a4b-6bit"
+# Laguna is the fastest of the served models and the only one smoke-tested on
+# more than one example (CoT + RAP).  gemma-4 is kept as an alias but needs the
+# manual chat template below.
+DEFAULT_MODEL = "Laguna-XS-2.1-6bit"
 
 # Friendly aliases -> exact model ids advertised by `GET /v1/models`.
 MODEL_ALIASES = {
     "default": DEFAULT_MODEL,
-    "gemma": DEFAULT_MODEL,
-    "gemma-4": DEFAULT_MODEL,
-    "laguna": "Laguna-XS-2.1-6bit",
-    "laguna-xs": "Laguna-XS-2.1-6bit",
+    "laguna": DEFAULT_MODEL,
+    "laguna-xs": DEFAULT_MODEL,
+    "gemma": "mlx-community--gemma-4-26b-a4b-6bit",
+    "gemma-4": "mlx-community--gemma-4-26b-a4b-6bit",
     "qwen": "mlx-community--Qwen3.8-27B-OptiQ-4bit",
     "qwen3.8": "mlx-community--Qwen3.8-27B-OptiQ-4bit",
     "qwen-coder": "lmstudio-community--Qwen3-Coder-Next-MLX-4bit",
@@ -310,7 +313,7 @@ if __name__ == "__main__":
     question = ("Natalia sold clips to 48 friends in April, and then she sold half "
                 "as many clips in May. How many clips did Natalia sell altogether "
                 "in April and May? Give just the number.")
-    for alias in ("default", "laguna", "qwen"):
+    for alias in ("default", "gemma", "qwen"):
         model_id = resolve_model(alias)
         missing = "" if model_id in served else "  [NOT SERVED]"
         print(f"\n--- {alias} -> {model_id}{missing}")

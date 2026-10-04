@@ -50,10 +50,15 @@ export OMLX_API_KEY=$(python3 -c "import json,os;print(json.load(open(os.path.ex
 
 | role | model id | usable? |
 |---|---|---|
-| **default** | `mlx-community--gemma-4-26b-a4b-6bit` | yes, **only via manual chat template** |
-| alternate | `Laguna-XS-2.1-6bit` | yes, natively |
-| alternate | `mlx-community--Qwen3.8-27B-OptiQ-4bit` | yes, natively |
+| **default** | `Laguna-XS-2.1-6bit` | yes, natively — fastest served model, smoke-tested on CoT + RAP |
+| alias `gemma` | `mlx-community--gemma-4-26b-a4b-6bit` | yes, **only via manual chat template** |
+| alias `qwen3.8` | `mlx-community--Qwen3.8-27B-OptiQ-4bit` | yes, natively, but ~18x slower end-to-end |
 | also served | `mlx-community--Qwen3.6-35B-A3B-4bit`, `lmstudio-community--Qwen3-Coder-Next-MLX-4bit`, `mlx-community--Laguna-XS-2.1-4bit` | untested |
+
+Measured on the same 8-example CoT/GSM8K run (2026-10-04): Laguna 78 s / 77.6
+tok/s / 28.5 GB, gemma-4 56 s / 62.6 tok/s / 22.9 GB, Qwen3.8 1420 s / 13.7
+tok/s / 20.4 GB. Laguna was chosen as the default on that basis; the accuracy
+differences at n=8 are noise, so treat speed and robustness as the real signal.
 
 Use the project default unless the user names another model for the task at
 hand. Always take ids from `GET /v1/models` rather than guessing, since oMLX
@@ -86,8 +91,8 @@ names local models with `--` in place of `/`.
 ```python
 from reasoners.lm import OMLXModel
 
-llm = OMLXModel()                    # project default (gemma-4 + gemma template)
-llm = OMLXModel("laguna")            # friendly alias
+llm = OMLXModel()                    # project default (Laguna-XS-2.1-6bit)
+llm = OMLXModel("gemma")             # gemma-4: manual Gemma chat template applied
 llm = OMLXModel("mlx-community--Qwen3.8-27B-OptiQ-4bit")
 llm = OMLXModel(chat_template="none")  # force the server's chat endpoint
 

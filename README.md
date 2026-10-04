@@ -125,7 +125,7 @@ local model. Any model id or alias from `reasoners/lm/omlx_model.py` can be used
 
 | alias | model | notes |
 |--|--|--|
-| `laguna` | `Laguna-XS-2.1-6bit` | **recommended** — fastest of the three and the only one smoke-tested on two examples (CoT, RAP) |
+| `laguna` | `Laguna-XS-2.1-6bit` | **default** — fastest of the three and the only one smoke-tested on two examples (CoT, RAP) |
 | `gemma` | `mlx-community--gemma-4-26b-a4b-6bit` | ships no chat template; `OMLXModel` applies a Gemma template itself |
 | `qwen3.8` | `mlx-community--Qwen3.8-27B-OptiQ-4bit` | works, but ~18x slower end-to-end than Laguna on the same CoT run |
 
